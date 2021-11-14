@@ -31,11 +31,14 @@ cbar.set_label('u (m/s)')
 plt.show()
 
 class MAP():
-    def __init__(self, lon, lat, u):
-        self.lon = lon
-        self.lat = lat
-        self.u = u
+    def __init__(self, x, y, u):
+        self.x = x
+        self.y = y
+        self.nx = len(x)
+        self.ny = len(y)
+        self.wind_map = u
         self.world = None
+        self.D = 125  # rotor diameter
 
     def sample_world(self, n, dialation=0, random_seed=137):
         # create an nxn array of the wind data
@@ -48,33 +51,36 @@ class MAP():
     def get_state(self):
         return self.world
     
-    def compute_wake(s_prev, new_loc, wind_map):
+    def compute_wake(self, s_prev, new_loc):
         '''
+        Assume wind blows along x, and only consider wake in the x direction
         @ parameters:
           s_prev: previous state before adding the new turbine
           new_loc: (x,y) index of the new turbine
         @ return:
-          wake_mat: the wake (velocity deficit) matrix with a negative value at the new turbine location, and zeros elsewhere
+          wake_mat: the wake matrix with a negative value at the new turbine location, and zeros elsewhere
         '''
-        D = 125  # rotor diameter
         k_wake = 0.075 # wake decay constant for onshore wind
         old_locs = np.argwhere(s_prev)
-        wake = 0
-        for loc in old_locs:
-            dist = np.linalg.norm(np.array([x[new_loc[0]], y[new_loc[1]]]) - np.array([x[loc[0]], y[loc[1]]]) )
-            mu = wind_map[loc[0], loc[1]]*(1 - D/(D+2*k_wake*dist)**2)
-            sigma = 0.5*mu
-            u_wake = np.random.normal(mu, sigma)
-            wake += u_wake
-        wake = np.max(wake, 0)
+        
         wake_mat = np.zeros((self.nx, self.ny))
-        wake_mat[new_loc[0], new_loc[1]] = -wake
+        u_wake = []
+        for loc in old_locs:
+            dist = np.linalg.norm(np.array([self.x[new_loc[0]], self.y[new_loc[1]]]) - np.array([self.x[loc[0]], self.y[loc[1]]]) )
+            # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
+            if dist < 5*self.D and loc[0] < new_loc[0]:
+                mu = self.wind_map[loc[0], loc[1]]*(1 - self.D/(self.D+2*k_wake*dist)**2)
+                sigma = 0.5*mu
+                u_wake.append(np.random.normal(mu, sigma))
+            wake_mat[new_loc[0], new_loc[1]] = np.min(u_wake)
         return wake_mat
         
     def reward(u):
         '''
-        u: wind speed at the new turbine location (after wake is deducted)
+        u: wind speed at the new turbine location (after wake is computed)
         '''
         D = 125
         rho = 1.225  # kg/m^3, air density
         return 1/2*np.pi/4*D**2*rho*u**3  # power generated at the turbine with u
+
+
