@@ -33,13 +33,21 @@ plt.show()
 
 class MAP():
     def __init__(self, x, y, u, nx, ny):
-        self.x = x
-        self.y = y
-        self.u = u
-        self.world = None
-        self.worldsize = (nx, ny)
+
+        self.raw_x = x
+        self.raw_y = y
+        self.u = u # raw wind data, DO NOT ACCESS, use get_current_wind() instead!
+        self.D = 125 # wind turbine size
+
+        self.nx = nx # size of sampled grid
+        self.ny = ny
+        self.worldsize = (self.nx, self.ny)
         self.turbine_mask = np.zeros(self.worldsize)
-        self.sample_world()
+
+        self.world = None
+        self.x = None
+        self.y = None
+        self.sample_world() # this will set self.world, self.x and self.y
         self.WORLD_0 = self.world # the initial wind map. do not update
 
     def sample_world(self, dialation=0, random_seed=137):
@@ -47,19 +55,20 @@ class MAP():
         # dialation is yet to be implemented
         random.seed(random_seed)
         nx, ny = self.get_world_shape()
-        x = self.x
-        y = self.y
+        x = self.raw_x
+        y = self.raw_y
 
         sample_x = random.randint(0,len(x)-nx)
         sample_y = random.randint(0, len(y) - ny)
         print("world location, {}, {}".format(sample_x,sample_y))
         self.world = self.u[sample_x:sample_x+nx, sample_y:sample_y+ny]
-
+        self.x = x[sample_x:sample_x+nx]
+        self.y = y[sample_y:sample_y+ny]
 
     def add_wake(self, wake_matrix):
         # require a nxn matrix that approximate the wake effect
         return self.world + wake_matrix
-
+   
     def get_current_wind(self):
         return self.world
 
@@ -103,20 +112,22 @@ def compute_wake(MAP, new_loc):
     @ return:
       wake_mat: the wake (velocity deficit) matrix with a negative value at the new turbine location, and zeros elsewhere
     '''
-    D = 125  # rotor diameter
-    k_wake = 0.075 # wake decay constant for onshore wind
+      # rotor diameter
+    k_wake = 0.075  # wake decay constant for onshore wind
     old_locs = np.argwhere(MAP.get_turbine_location())
-    wake = 0
+
+    wake_mat = np.zeros((MAP.nx, MAP.ny))
+    u_wake = []
     wind_map = MAP.get_current_wind()
     for loc in old_locs:
-        dist = np.linalg.norm(np.array([x[new_loc[0]], y[new_loc[1]]]) - np.array([x[loc[0]], y[loc[1]]]) )
-        mu = wind_map[loc[0], loc[1]]*(1 - D/(D+2*k_wake*dist)**2)
-        sigma = 0.5*mu
-        u_wake = np.random.normal(mu, sigma)
-        wake += u_wake
-    wake = np.max(wake, 0)
-    wake_mat = np.zeros((MAP.get_world_shape()))
-    wake_mat[new_loc[0], new_loc[1]] = -wake
+        dist = np.linalg.norm(
+            np.array([MAP.x[new_loc[0]], MAP.y[new_loc[1]]]) - np.array([MAP.x[loc[0]], MAP.y[loc[1]]]))
+        # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
+        if dist < 5 * MAP.D and loc[0] < new_loc[0]:
+            mu = wind_map[loc[0], loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
+            sigma = 0.5 * mu
+            u_wake.append(np.random.normal(mu, sigma))
+        wake_mat[new_loc[0], new_loc[1]] = np.min(u_wake)
     return wake_mat
 
 
@@ -134,11 +145,13 @@ def total_power(MAP):
         # empty world with no turbine
         return 0
 
+
 def add_turbine_and_compute_reward(MAP, new_loc):
     power_before = total_power(MAP)
     MAP.add_turbine(new_loc)
     reward = total_power(MAP) - power_before
     return reward
+
 
 def power_generated(u):
     '''
