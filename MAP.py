@@ -2,6 +2,7 @@ import numpy as np
 import time
 import random
 import matplotlib.pyplot as plt
+import csv
 
 data_dir = './GWA/AltamontCA/'
 file = 'custom_wind-speed_100m.xyz'
@@ -14,7 +15,8 @@ u = u.astype(float)
 
 # construct x and y
 dx, dy = 200, 350
-nx, ny = 96, 102
+nx, ny = 3, 3
+#nx, ny = 96, 102
 x = np.linspace(0, nx*dx, nx)
 y = np.linspace(0, ny*dy, ny)
 print('x len', len(x))
@@ -49,6 +51,16 @@ class MAP():
         self.y = None
         self.sample_world() # this will set self.world, self.x and self.y
         self.WORLD_0 = self.world # the initial wind map. do not update
+
+        self.grid_to_index= dict()
+        self.index_to_grid= dict()
+        k= 0
+        for i in range(self.nx):
+            for j in range(self.ny):
+                self.grid_to_index[(i, j)]= k
+                self.index_to_grid[k]= (i, j)
+                k += 1
+
 
     def sample_world(self, dialation=0, random_seed=137):
         # create an nxn array of the wind data
@@ -160,3 +172,156 @@ def power_generated(u):
     D = 125
     rho = 1.225  # kg/m^3, air density
     return 1/2*np.pi/4*D**2*rho*u**3  # power generated at the turbine with u
+
+
+# Generating dataset
+
+def grid_to_flattened_state(MAP): # we'll need to rethink this string approach maybe for larger grid sizes (eg. 15 will be counted as 1 and 5)
+    flattened_rep= []
+    for i in range(MAP.nx):
+        for j in range(MAP.ny):
+            if MAP.has_turbine(i, j):
+                flattened_rep.append(MAP.grid_to_index[(i, j)])
+    return str(flattened_rep)
+
+
+def flattened_state_to_grid(flattened_rep):
+    flattened_rep= [int(x) for x in flattened_rep]
+    grid= np.zeros((MAP.nx, MAP.ny))
+    for i in flattened_rep:
+        tmp_pos= MAP.index_to_grid[i]
+        grid[tmp_pos[0], tmp_pos[1]]= 1
+    return grid
+
+
+def generate_random_exploration_data(MAP):
+    # this is assuming we have 3 actions-- add turbine to any point on the grid, do nothing, and stop adding turbines completely [0, 1, 2]
+    # the probability to stop adding turbines increases over time to 0.01 (in increments of 50 steps (2e-4 each) from 0)
+
+    prob_stop= 0.0
+    prob_stop_limit= 0.01
+    prob_stop_increment= (prob_stop_limit-prob_stop)/50
+    stop_actions= [-1, 2]
+    actions= [0, 1]
+    random_seed=137
+    random.seed(random_seed)
+    VERY_NEG_REWARD= -1000 # for placing turbine where there is already a turbine
+    fields= ['s', 'a', 'r', 'sp']
+    filename= 'dataset'
+    with open(filename, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(fields)
+
+    while():
+        # 1. this section slowly builds up the probability of the stopping the windmill adding and determines when to stop it
+        stop_actions_probs= [1-prob_stop, prob_stop]
+        stop_action = random.choices(stop_actions, stop_actions_probs)[0]
+        if stop_action == 2:
+            print("Wind Turbine adding stopped!")
+            break
+        if prob_stop <= prob_stop_limit:
+            prob_stop += prob_stop_increment
+
+        # 2. completely random exploration policy
+        action= random.choice(actions)
+
+        if action == 1:
+            current_state= grid_to_flattened_state(MAP)
+            
+            new_x= random.choice(range(MAP.nx)) # generate x and y point to put turbine at
+            new_y= random.choice(range(MAP.ny))
+
+            if MAP.has_turbine(new_x, new_y):
+                reward= VERY_NEG_REWARD
+            else:
+                reward= add_turbine_and_compute_reward(MAP, new_x, new_y)
+
+            new_state= grid_to_flattened_state(MAP)
+        else:
+            current_state= grid_to_flattened_state(MAP)
+            new_state= current_state
+            reward= 0 #?
+        
+        # 3. to write dataset entry, we need current flattened state, chosen action, resulting reward (power) and next state
+        with open(filename, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow([current_state, action, reward, new_state])
+    
+    # here, write the last entry of dataset (for the permanent STOP action)
+    current_state= grid_to_flattened_state(MAP)
+    with open(filename, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow([current_state, 2, 0, current_state])
+
+# Running Q-learning
+class QLearning:
+  def __init__(self, γ, Q, α):
+    self.γ = γ
+    self.Q = Q
+    self.α = α
+
+def update(model, s, a, r, sp):
+    γ, Q, α = model.γ, model.Q, model.α
+    Q[s,a] += α*(r + γ*max(Q[sp,:]) - Q[s,a])
+    return model
+
+
+def extract_policy(model):
+    Q= model.Q
+    π= np.argmax(Q, axis=1)
+    return π+1
+
+
+def simulate(df, model, h):
+    for j in range(h):
+        # for visited
+        for i in df.index:
+            model= update(model, df['s'][i]-1, df['a'][i]-1, df['r'][i], df['sp'][i]-1)
+        
+    # for unvisited 
+    """NN_model= generate_NN_model(model)
+    #NN_model = load_model('NN_model_medium')
+    #X_train, y_train= get_dataset(model.Q, visited)
+    for i in range(len(unvisited)):
+        print(i)
+        s= unvisited[i]
+        model= update_Qvalues(s, NN_model, model)"""
+        
+    return extract_policy(model)
+
+
+def write_to_file(π, filename):
+    np.savetxt(filename+".policy", π, fmt='%i')
+
+
+def run_Q_learning(filename, model, h):
+    write_to_file(simulate(read_in_df(filename), model, h), filename)
+
+# Main
+map= MAP(x, y, u, nx, ny)
+
+_S_= 36
+_𝒜_= 3
+Q= np.zeros((_S_, _𝒜_))
+γ= 1 #given in question
+α= 1/100
+#α= 1/_S_
+Q_model= QLearning(γ, Q, α)
+
+#run Q-learning
+filename= "medium"
+df= read_in_df(filename)
+visited, unvisited, total_states= visited_states(df)
+h= 10
+
+t1= time()
+run_Q_learning(filename, Q_model, h)
+t2= time()
+print("Total time: ", (t2-t1)/60)
+
+# Questions:
+# 1. do we include a max number of turbines?
+# 2. 0 reward for stopping (cause same power output)?
+# --> 2.5. 0 reward for doing nothing?
+# 3. In description, say you haven't tailored Q-learning to it yet (it's still your project 2 implementation), 
+# but you'll change the state soon
