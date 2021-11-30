@@ -179,10 +179,9 @@ def power_generated(u):
 
 def grid_to_flattened_state(MAP): # we'll need to rethink this string approach maybe for larger grid sizes (eg. 15 will be counted as 1 and 5)
     flattened_rep= []
-    for i in range(MAP.nx):
-        for j in range(MAP.ny):
-            if MAP.has_turbine(i, j):
-                flattened_rep.append(MAP.grid_to_index[(i, j)])
+    list_args= np.argwhere(MAP.turbine_mask==1)
+    for i in len(list_args):
+        flattened_rep.append(MAP.grid_to_index[(list_args[i][0], list_args[i][1])])
     return str(flattened_rep)
 
 
@@ -196,66 +195,62 @@ def flattened_state_to_grid(flattened_rep):
 
 
 def generate_random_exploration_data(MAP):
-    # this is assuming we have 3 actions-- add turbine to any point on the grid, do nothing, and stop adding turbines completely [0, 1, 2]
-    # the probability to stop adding turbines increases over time to 0.01 (in increments of 50 steps (2e-4 each) from 0)
-
     prob_stop= 0.0
     prob_stop_limit= 0.01
-    prob_stop_increment= (prob_stop_limit-prob_stop)/50
-    stop_actions= [-1, 2]
-    actions= [0, 1]
+    prob_step_size= 50
     random_seed=137
-    random.seed(random_seed)
     VERY_NEG_REWARD= -1000 # for placing turbine where there is already a turbine
+
+    prob_stop_increment= (prob_stop_limit-prob_stop)/prob_step_size
+    full_grid_size= MAP.nx*MAP.ny
+    actions= range(full_grid_size+1)
+    action_probs= [(1.0-prob_stop)/full_grid_size]*full_grid_size # initial prob distribution
+    action_probs += [prob_stop]
+    random.seed(random_seed)
     fields= ['s', 'a', 'r', 'sp']
     filename= 'dataset'
     with open(filename, 'w') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(fields)
 
+    count= 0 # to show how many samples we generated so far
     while():
-        # 1. this section slowly builds up the probability of the stopping the windmill adding and determines when to stop it
-        stop_actions_probs= [1-prob_stop, prob_stop]
-        stop_action = random.choices(stop_actions, stop_actions_probs)[0]
-        if stop_action == 2:
-            print("Wind Turbine adding stopped!")
+        print(count)
+        count += 1
+
+        action = random.choices(actions, action_probs)[0]
+
+        # last action to stop adding turbines
+        if action == actions[-1]: 
+            print("Wind Turbine adding has stopped!")
+            reward= 0
+            with open(filename, 'w') as csvfile:
+                csvwriter = csv.writer(csvfile)
+                csvwriter.writerow([current_state, action, reward, current_state])
             break
-        if prob_stop <= prob_stop_limit:
-            prob_stop += prob_stop_increment
-
-        # 2. completely random exploration policy
-        action= random.choice(actions)
-
-        if action == 1:
-            current_state= grid_to_flattened_state(MAP)
-            
-            new_x= random.choice(range(MAP.nx)) # generate x and y point to put turbine at
-            new_y= random.choice(range(MAP.ny))
-
-            if MAP.has_turbine(new_x, new_y):
-                reward= VERY_NEG_REWARD
-            else:
-                reward= add_turbine_and_compute_reward(MAP, new_x, new_y)
-
-            new_state= grid_to_flattened_state(MAP)
-        else:
-            current_state= grid_to_flattened_state(MAP)
-            new_state= current_state
-            reward= 0 #?
         
-        # 3. to write dataset entry, we need current flattened state, chosen action, resulting reward (power) and next state
+        # to slowly build up probability of stopping
+        if prob_stop < prob_stop_limit:
+            prob_stop += prob_stop_increment
+            action_probs= [(1.0-prob_stop)/full_grid_size]*full_grid_size # initial prob distribution
+            action_probs += [prob_stop]
+
+        # corresponding location to update for a specific action
+        current_state= grid_to_flattened_state(MAP)
+        new_x, new_y= MAP.index_to_grid[action]
+        if MAP.has_turbine(new_x, new_y):
+            reward= VERY_NEG_REWARD
+        else:
+            reward= add_turbine_and_compute_reward(MAP, new_x, new_y)
+        new_state= grid_to_flattened_state(MAP)
+        
+        # write dataset entry, we need current flattened state, chosen action, resulting reward (power) and next state
         with open(filename, 'w') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow([current_state, action, reward, new_state])
-    
-    # here, write the last entry of dataset (for the permanent STOP action)
-    current_state= grid_to_flattened_state(MAP)
-    with open(filename, 'w') as csvfile:
-            csvwriter = csv.writer(csvfile)
-            csvwriter.writerow([current_state, 2, 0, current_state])
 
 # Running Q-learning
-class QLearning:
+"""class QLearning:
   def __init__(self, γ, Q, α):
     self.γ = γ
     self.Q = Q
@@ -277,17 +272,7 @@ def simulate(df, model, h):
     for j in range(h):
         # for visited
         for i in df.index:
-            model= update(model, df['s'][i]-1, df['a'][i]-1, df['r'][i], df['sp'][i]-1)
-        
-    # for unvisited 
-    """NN_model= generate_NN_model(model)
-    #NN_model = load_model('NN_model_medium')
-    #X_train, y_train= get_dataset(model.Q, visited)
-    for i in range(len(unvisited)):
-        print(i)
-        s= unvisited[i]
-        model= update_Qvalues(s, NN_model, model)"""
-        
+            model= update(model, df['s'][i]-1, df['a'][i]-1, df['r'][i], df['sp'][i]-1)        
     return extract_policy(model)
 
 
@@ -296,12 +281,13 @@ def write_to_file(π, filename):
 
 
 def run_Q_learning(filename, model, h):
-    write_to_file(simulate(read_in_df(filename), model, h), filename)
+    write_to_file(simulate(read_in_df(filename), model, h), filename)"""
 
 # Main
 map= MAP(x, y, u, nx, ny)
+generate_random_exploration_data(map)
 
-_S_= 36
+"""_S_= 36
 _𝒜_= 3
 Q= np.zeros((_S_, _𝒜_))
 γ= 1 #given in question
@@ -318,11 +304,4 @@ h= 10
 t1= time()
 run_Q_learning(filename, Q_model, h)
 t2= time()
-print("Total time: ", (t2-t1)/60)
-
-# Questions:
-# 1. do we include a max number of turbines?
-# 2. 0 reward for stopping (cause same power output)?
-# --> 2.5. 0 reward for doing nothing?
-# 3. In description, say you haven't tailored Q-learning to it yet (it's still your project 2 implementation), 
-# but you'll change the state soon
+print("Total time: ", (t2-t1)/60)"""
