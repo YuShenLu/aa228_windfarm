@@ -3,6 +3,8 @@ import time
 import random
 import matplotlib.pyplot as plt
 import csv
+import math
+import pandas as pd
 
 data_dir = './GWA/AltamontCA/'
 file = 'custom_wind-speed_100m.xyz'
@@ -19,6 +21,7 @@ u = u.astype(float)
 # construct x and y
 dx, dy = 200, 350
 nx, ny = 3, 3
+n= nx*ny # *Size of grid
 #nx, ny = 96, 102
 wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
 x = np.linspace(0, nx*dx, nx)
@@ -213,14 +216,13 @@ def generate_random_exploration_data(MAP):
     VERY_NEG_REWARD= -1000 # for placing turbine where there is already a turbine
 
     prob_stop_increment= (prob_stop_limit-prob_stop)/prob_step_size
-    full_grid_size= MAP.nx*MAP.ny
-    actions= range(full_grid_size+1)
-    action_probs= [(1.0-prob_stop)/full_grid_size]*full_grid_size # initial prob distribution
+    actions= range(n+1)
+    action_probs= [(1.0-prob_stop)/n]*n # initial prob distribution
     action_probs += [prob_stop]
     random.seed(random_seed)
     fields= ['s', 'a', 'r', 'sp']
     filename= 'dataset'
-    with open(filename, 'w') as csvfile:
+    with open(filename+'.csv', 'w') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(fields)
 
@@ -235,7 +237,7 @@ def generate_random_exploration_data(MAP):
         if action == actions[-1]: 
             print("Wind Turbine adding has stopped!")
             reward= 0
-            with open(filename, 'w') as csvfile:
+            with open(filename+'.csv', 'w') as csvfile:
                 csvwriter = csv.writer(csvfile)
                 csvwriter.writerow([current_state, action, reward, current_state])
             break
@@ -243,7 +245,7 @@ def generate_random_exploration_data(MAP):
         # to slowly build up probability of stopping
         if prob_stop < prob_stop_limit:
             prob_stop += prob_stop_increment
-            action_probs= [(1.0-prob_stop)/full_grid_size]*full_grid_size # initial prob distribution
+            action_probs= [(1.0-prob_stop)/n]*n # initial prob distribution
             action_probs += [prob_stop]
 
         # corresponding location to update for a specific action
@@ -256,16 +258,41 @@ def generate_random_exploration_data(MAP):
         new_state= grid_to_flattened_state(MAP)
         
         # write dataset entry, we need current flattened state, chosen action, resulting reward (power) and next state
-        with open(filename, 'w') as csvfile:
+        with open(filename+'.csv', 'w') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow([current_state, action, reward, new_state])
 
 # Running Q-learning
-"""class QLearning:
+class QLearning:
   def __init__(self, γ, Q, α):
     self.γ = γ
     self.Q = Q
     self.α = α
+
+def read_in_df(filename):
+    return pd.read_csv(filename)
+
+def flat_rep_and_state_index(df):
+    visited= set(df['s'])
+    visited= visited.sort()
+    if len(visited) < _S_:
+        print("Not all states explored in dataset!")
+    
+    flat_rep_to_state_index= dict()
+    state_index_to_flat_rep= dict()
+    i= 0
+    for state_str in visited:
+        flat_rep_to_state_index[state_str]= i
+        state_index_to_flat_rep[i]= state_str
+        i += 1
+    return flat_rep_to_state_index, state_index_to_flat_rep
+
+def add_state_index_column_to_df(df, flat_rep_to_state_index):
+    s_indices= [flat_rep_to_state_index[x] for x in df['s']]
+    sp_indices= [flat_rep_to_state_index[x] for x in df['sp']]
+    df.insert(loc=1, column='s_index', value=s_indices)
+    df.insert(loc=5, column='sp_index', value=sp_indices)
+    return df
 
 def update(model, s, a, r, sp):
     γ, Q, α = model.γ, model.Q, model.α
@@ -276,14 +303,14 @@ def update(model, s, a, r, sp):
 def extract_policy(model):
     Q= model.Q
     π= np.argmax(Q, axis=1)
-    return π+1
+    return π
 
 
 def simulate(df, model, h):
     for j in range(h):
         # for visited
         for i in df.index:
-            model= update(model, df['s'][i]-1, df['a'][i]-1, df['r'][i], df['sp'][i]-1)        
+            model= update(model, df['s_index'][i], df['a'][i], df['r'][i], df['sp_index'][i])
     return extract_policy(model)
 
 
@@ -292,27 +319,28 @@ def write_to_file(π, filename):
 
 
 def run_Q_learning(filename, model, h):
-    write_to_file(simulate(read_in_df(filename), model, h), filename)"""
+    df= read_in_df(filename)
+    flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
+    df= add_state_index_column_to_df(df, flat_rep_to_state_index)
+    π= simulate(df, model, h)
+    write_to_file(π, filename)
 
 # Main
 map= MAP(x, y, u, nx, ny)
 generate_random_exploration_data(map)
 
-"""_S_= 36
-_𝒜_= 3
+_S_= math.comb(n, 2)
+_𝒜_= n+1
 Q= np.zeros((_S_, _𝒜_))
-γ= 1 #given in question
-α= 1/100
-#α= 1/_S_
+γ= 0.9 #given in question
+α= 0.01
 Q_model= QLearning(γ, Q, α)
 
 #run Q-learning
-filename= "medium"
-df= read_in_df(filename)
-visited, unvisited, total_states= visited_states(df)
+filename= "dataset"
 h= 10
 
 t1= time()
 run_Q_learning(filename, Q_model, h)
 t2= time()
-print("Total time: ", (t2-t1)/60)"""
+print("Total time (s): ", (t2-t1))
