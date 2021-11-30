@@ -138,6 +138,9 @@ def compute_wake(MAP, new_loc):
     '''
       # rotor diameter
     k_wake = 0.075  # wake decay constant for onshore wind
+    if (not np.any(MAP.turbine_mask)):  # there is no turbine yet
+        return np.zeros((MAP.nx, MAP.ny))
+    
     old_locs = np.argwhere(MAP.get_turbine_location())
 
     wake_mat = np.zeros((MAP.nx, MAP.ny))
