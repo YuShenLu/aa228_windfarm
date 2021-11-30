@@ -273,7 +273,7 @@ class QLearning:
     self.α = α
 
 def read_in_df(filename):
-    return pd.read_csv(filename)
+    return pd.read_csv(filename+'.csv')
 
 def flat_rep_and_state_index(df):
     visited= set(df['s'])
