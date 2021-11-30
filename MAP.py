@@ -7,6 +7,9 @@ import csv
 data_dir = './GWA/AltamontCA/'
 file = 'custom_wind-speed_100m.xyz'
 
+random_seed=137
+random.seed(random_seed)
+
 fpn = open(data_dir + file,'r')
 lines = fpn.readlines()
 
@@ -17,11 +20,20 @@ u = u.astype(float)
 dx, dy = 200, 350
 nx, ny = 3, 3
 #nx, ny = 96, 102
+wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
 x = np.linspace(0, nx*dx, nx)
 y = np.linspace(0, ny*dy, ny)
 print('x len', len(x))
 print('y len', len(y))
-u = np.reshape(u, (nx, ny), order='F')
+#u = np.reshape(u, (nx, ny), order='F')
+u = np.reshape(u, (wind_nx, wind_ny), order='F') #NOTE: and this -Manasi
+# sampling subsection of u
+tmp_x= random.choice(range(wind_nx-nx)) #NOTE: and these -Manasi
+tmp_y= random.choice(range(wind_ny-ny))
+#print("tmp_x: ", tmp_x)
+#print("tmp_y: ", tmp_y)
+u= u[tmp_x:tmp_x+nx, tmp_y:tmp_y+ny] #NOTE: and this -Manasi
+#print("u size: ", u.shape)
 
 # plot the wind map
 yv, xv = np.meshgrid(y, x)
@@ -180,7 +192,7 @@ def power_generated(u):
 def grid_to_flattened_state(MAP): # we'll need to rethink this string approach maybe for larger grid sizes (eg. 15 will be counted as 1 and 5)
     flattened_rep= []
     list_args= np.argwhere(MAP.turbine_mask==1)
-    for i in len(list_args):
+    for i in range(len(list_args)):
         flattened_rep.append(MAP.grid_to_index[(list_args[i][0], list_args[i][1])])
     return str(flattened_rep)
 
@@ -198,7 +210,6 @@ def generate_random_exploration_data(MAP):
     prob_stop= 0.0
     prob_stop_limit= 0.01
     prob_step_size= 50
-    random_seed=137
     VERY_NEG_REWARD= -1000 # for placing turbine where there is already a turbine
 
     prob_stop_increment= (prob_stop_limit-prob_stop)/prob_step_size
@@ -214,7 +225,7 @@ def generate_random_exploration_data(MAP):
             csvwriter.writerow(fields)
 
     count= 0 # to show how many samples we generated so far
-    while():
+    while(True):
         print(count)
         count += 1
 
@@ -241,7 +252,7 @@ def generate_random_exploration_data(MAP):
         if MAP.has_turbine(new_x, new_y):
             reward= VERY_NEG_REWARD
         else:
-            reward= add_turbine_and_compute_reward(MAP, new_x, new_y)
+            reward= add_turbine_and_compute_reward(MAP, (new_x, new_y))
         new_state= grid_to_flattened_state(MAP)
         
         # write dataset entry, we need current flattened state, chosen action, resulting reward (power) and next state
