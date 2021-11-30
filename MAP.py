@@ -161,6 +161,7 @@ def total_power(MAP):
 def add_turbine_and_compute_reward(MAP, new_loc):
     power_before = total_power(MAP)
     MAP.add_turbine(new_loc)
+    MAP.add_wake(compute_wake(MAP, new_loc))  # update the wind map by adding wake
     reward = total_power(MAP) - power_before
     return reward
 
