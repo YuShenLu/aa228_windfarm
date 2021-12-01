@@ -96,7 +96,7 @@ class MAP():
 
     def add_wake(self, wake_matrix):
         # require a nxn matrix that approximate the wake effect
-        return self.world + wake_matrix
+        return self.world - wake_matrix
    
     def get_current_wind(self):
         return self.world
@@ -159,10 +159,12 @@ def compute_wake(MAP, new_loc):
             mu = wind_map[loc[0], loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
             sigma = 0.5 * mu
             u_wake.append(np.random.normal(mu, sigma))
-    if u_wake:  #NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi
-        wake_mat[new_loc[0], new_loc[1]] = np.min(u_wake)
-    else:
-        pass
+    if u_wake:  #NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi       
+        wake_candidate = np.max(np.abs(u_wake))
+        candidate_ind = np.argmax(np.abs(u_wake))
+        wake_mat[new_loc[0], new_loc[1]] = wake_candidate*np.sign(u_wake[candidate_ind]) \
+                                           if wake_candidate < np.abs(wind_map[loc[0], loc[1]]) else 0
+        
     return wake_mat
 
 
