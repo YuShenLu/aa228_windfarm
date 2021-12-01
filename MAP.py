@@ -50,7 +50,7 @@ cbar = plt.colorbar()
 cbar.set_label('u (m/s)')
 plt.show()
 
-class MAP():
+class MAP_class():
     def __init__(self, x, y, u, nx, ny):
 
         self.raw_x = x
@@ -131,6 +131,11 @@ class MAP():
 
     def get_world_shape(self):
         return self.worldsize
+
+    def reset_map(self):
+        self.world = self.WORLD_0
+        self.turbine_mask = np.zeros(self.worldsize)
+
 
 
 def compute_wake(MAP, new_loc):
@@ -230,12 +235,14 @@ def flattened_state_to_grid(flattened_rep):
     return grid
 
 
-def generate_random_exploration_data(MAP, count=0):
+def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
     # count is used to show how many samples we generated so far
+    MAP = MAP_class(x, y, u, nx, ny)
     prob_stop= 0.0
-    prob_stop_limit= 0.01
+    prob_stop_limit= 0.00001
     prob_step_size= 50
     VERY_NEG_REWARD= -1000000 # for placing turbine where there is already a turbine
+    count = 0
 
     prob_stop_increment= (prob_stop_limit-prob_stop)/prob_step_size
     actions= range(n+1)
@@ -251,7 +258,7 @@ def generate_random_exploration_data(MAP, count=0):
     all_visited_states= set()
 
 
-    while(1):
+    while(limit is None or count<=limit):
         print(count)
         count += 1
         
@@ -289,8 +296,7 @@ def generate_random_exploration_data(MAP, count=0):
 
         # if grid has been fully filled, we can remove all turbines (clear it) to explore states anew
         if len(current_state)==n: # and len(all_visited_states) < _S_:
-            for key, val in MAP.grid_to_index.items():
-                MAP.remove_turbine(key)
+            MAP.reset_map()
 
     return count
 
@@ -366,9 +372,7 @@ def run_Q_learning(filename, model, h):
 
 # Main
 count = 0
-while count<5000:
-    map= MAP(x, y, u, nx, ny)
-    count = generate_random_exploration_data(map, count)
+generate_random_exploration_data(x, y, u, nx, ny, limit=10000)
 
 filename= 'dataset'
 #df= read_in_df(filename)
