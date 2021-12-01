@@ -157,16 +157,24 @@ def compute_wake(MAP, new_loc):
         # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
         if dist < 5 * MAP.D and loc[0] < new_loc[0]:
             mu = wind_map[loc[0], loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
-            sigma = abs(0.5 * mu)
+            sigma = 0.3 * mu  # PZ: shrunk sigma to guarantee the sampled wake value is the same sign as wind_map[loc[0], loc[1]]
             try:
                 u_wake.append(np.random.normal(mu, sigma))
             except ValueError as e:
                 print(e)
+        if dist < 5 * MAP.D and loc[0] > new_loc[0]: # modify the wind speed in the wake region of the NEW turbine
+            mu = wind_map[new_loc[0], new_loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
+            sigma = 0.3 * mu
+            u_wake_on_old = np.random.normal(mu, sigma)
+            wake_mat[loc[0], loc[1]] = u_wake_on_old if np.abs(u_wake_on_old) < np.abs(wind_map[loc[0], loc[1]]) \
+                                       else wind_map[loc[0], loc[1]]
+            
+            
     if u_wake:  #NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi       
         wake_candidate = np.max(np.abs(u_wake))
         candidate_ind = np.argmax(np.abs(u_wake))
         wake_mat[new_loc[0], new_loc[1]] = wake_candidate*np.sign(u_wake[candidate_ind]) \
-                                           if wake_candidate < np.abs(wind_map[loc[0], loc[1]]) else 0
+                                           if wake_candidate < np.abs(wind_map[new_loc[0], new_loc[1]]) else wind_map[new_loc[0], new_loc[1]]
         
     return wake_mat
 
