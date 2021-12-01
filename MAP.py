@@ -290,17 +290,10 @@ def read_in_df(filename):
     temp_df= pd.read_csv(filename+'.csv', dtype=str, keep_default_na=False)
     temp_df['a'] = temp_df['a'].astype(int)
     temp_df['r'] = temp_df['r'].astype(float)
-    #temp_df= temp_df.where(not(pd.isna(temp_df['s'].any())), "N")
     return temp_df
 
 def flat_rep_and_state_index(df):
     visited= list(set(df['s']))
-    """for i in range(len(visited)):
-        if math.isnan(visited[i]):
-            visited[i]= "N"
-            break"""
-            
-    print("len array: ", len(df['s']))
     visited= sorted(visited)
     if len(visited) < _S_:
         print("Not all states explored in dataset!")
@@ -330,8 +323,9 @@ def update(model, s, a, r, sp):
 
 def extract_policy(model):
     Q= model.Q
+    U_π= np.max(Q, axis=1)
     π= np.argmax(Q, axis=1)
-    return π
+    return U_π, π
 
 
 def simulate(df, model, h):
@@ -342,7 +336,8 @@ def simulate(df, model, h):
     return extract_policy(model)
 
 
-def write_to_file(π, filename):
+def write_to_file(U_π, π, filename):
+    np.savetxt(filename+".utility", U_π)
     np.savetxt(filename+".policy", π, fmt='%i')
 
 
@@ -350,12 +345,13 @@ def run_Q_learning(filename, model, h):
     df= read_in_df(filename)
     flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
     df= add_state_index_column_to_df(df, flat_rep_to_state_index)
-    π= simulate(df, model, h)
-    write_to_file(π, filename)
+    U_π, π= simulate(df, model, h)
+    write_to_file(U_π, π, filename)
 
 # Main
 map= MAP(x, y, u, nx, ny)
 #generate_random_exploration_data(map)
+
 filename= 'dataset'
 #df= read_in_df(filename)
 #flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
