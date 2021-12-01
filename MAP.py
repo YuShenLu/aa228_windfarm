@@ -1,9 +1,10 @@
 import numpy as np
-import time
+from time import time
 import random
 import matplotlib.pyplot as plt
 import csv
 import math
+from numpy.core.numeric import NaN
 import pandas as pd
 
 data_dir = './GWA/AltamontCA/'
@@ -22,6 +23,7 @@ u = u.astype(float)
 dx, dy = 200, 350
 nx, ny = 3, 3
 n= nx*ny # *Size of grid
+_S_= 2 ** n
 #nx, ny = 96, 102
 wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
 x = np.linspace(0, nx*dx, nx)
@@ -116,7 +118,7 @@ class MAP():
     def remove_turbine(self, loc):
         x, y = loc
         if self.has_turbine(x, y):
-            self.turbine_mask =0
+            self.turbine_mask[x,y] =0
             return True
         else:
             return False
@@ -157,7 +159,10 @@ def compute_wake(MAP, new_loc):
             mu = wind_map[loc[0], loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
             sigma = 0.5 * mu
             u_wake.append(np.random.normal(mu, sigma))
+    if u_wake:  #NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi
         wake_mat[new_loc[0], new_loc[1]] = np.min(u_wake)
+    else:
+        pass
     return wake_mat
 
 
@@ -166,7 +171,7 @@ def total_power(MAP):
     turbine_locs = np.argwhere(MAP.get_turbine_location())
     wind_map = MAP.get_current_wind()
     total_p = 0
-    if turbine_locs:
+    if turbine_locs.size > 0:
         for loc in turbine_locs:
             u = wind_map[loc[0], loc[1]]
             total_p+= power_generated(u)
@@ -199,8 +204,8 @@ def grid_to_flattened_state(MAP): # we'll need to rethink this string approach m
     flattened_rep= []
     list_args= np.argwhere(MAP.turbine_mask==1)
     for i in range(len(list_args)):
-        flattened_rep.append(MAP.grid_to_index[(list_args[i][0], list_args[i][1])])
-    return str(flattened_rep)
+        flattened_rep.append(str(MAP.grid_to_index[(list_args[i][0], list_args[i][1])]))
+    return "".join(flattened_rep)
 
 
 def flattened_state_to_grid(flattened_rep):
@@ -214,9 +219,9 @@ def flattened_state_to_grid(flattened_rep):
 
 def generate_random_exploration_data(MAP):
     prob_stop= 0.0
-    prob_stop_limit= 0.01
+    prob_stop_limit= 1e-5
     prob_step_size= 50
-    VERY_NEG_REWARD= -1000 # for placing turbine where there is already a turbine
+    VERY_NEG_REWARD= -1000000 # for placing turbine where there is already a turbine
 
     prob_stop_increment= (prob_stop_limit-prob_stop)/prob_step_size
     actions= range(n+1)
@@ -225,22 +230,24 @@ def generate_random_exploration_data(MAP):
     random.seed(random_seed)
     fields= ['s', 'a', 'r', 'sp']
     filename= 'dataset'
-    with open(filename+'.csv', 'w') as csvfile:
+    with open(filename+'.csv', 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(fields)
 
+    all_visited_states= set()
     count= 0 # to show how many samples we generated so far
+
     while(True):
         print(count)
         count += 1
-
+        
         action = random.choices(actions, action_probs)[0]
 
         # last action to stop adding turbines
         if action == actions[-1]: 
             print("Wind Turbine adding has stopped!")
             reward= 0
-            with open(filename+'.csv', 'w') as csvfile:
+            with open(filename+'.csv', 'a', newline='') as csvfile:
                 csvwriter = csv.writer(csvfile)
                 csvwriter.writerow([current_state, action, reward, current_state])
             break
@@ -253,17 +260,24 @@ def generate_random_exploration_data(MAP):
 
         # corresponding location to update for a specific action
         current_state= grid_to_flattened_state(MAP)
+        all_visited_states.add(current_state)
         new_x, new_y= MAP.index_to_grid[action]
         if MAP.has_turbine(new_x, new_y):
             reward= VERY_NEG_REWARD
         else:
             reward= add_turbine_and_compute_reward(MAP, (new_x, new_y))
         new_state= grid_to_flattened_state(MAP)
-        
+  
         # write dataset entry, we need current flattened state, chosen action, resulting reward (power) and next state
-        with open(filename+'.csv', 'w') as csvfile:
+        with open(filename+'.csv', 'a', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow([current_state, action, reward, new_state])
+
+        # if grid has been fully filled, we can remove all turbines (clear it) to explore states anew
+        if len(current_state)==n: # and len(all_visited_states) < _S_:
+            for key, val in MAP.grid_to_index.items():
+                MAP.remove_turbine(key)
+
 
 # Running Q-learning
 class QLearning:
@@ -273,13 +287,24 @@ class QLearning:
     self.α = α
 
 def read_in_df(filename):
-    return pd.read_csv(filename+'.csv')
+    temp_df= pd.read_csv(filename+'.csv', dtype=str, keep_default_na=False)
+    temp_df['a'] = temp_df['a'].astype(int)
+    temp_df['r'] = temp_df['r'].astype(float)
+    #temp_df= temp_df.where(not(pd.isna(temp_df['s'].any())), "N")
+    return temp_df
 
 def flat_rep_and_state_index(df):
-    visited= set(df['s'])
-    visited= visited.sort()
+    visited= list(set(df['s']))
+    """for i in range(len(visited)):
+        if math.isnan(visited[i]):
+            visited[i]= "N"
+            break"""
+            
+    print("len array: ", len(df['s']))
+    visited= sorted(visited)
     if len(visited) < _S_:
         print("Not all states explored in dataset!")
+    print("States explored: ", len(visited))
     
     flat_rep_to_state_index= dict()
     state_index_to_flat_rep= dict()
@@ -330,9 +355,11 @@ def run_Q_learning(filename, model, h):
 
 # Main
 map= MAP(x, y, u, nx, ny)
-generate_random_exploration_data(map)
+#generate_random_exploration_data(map)
+filename= 'dataset'
+#df= read_in_df(filename)
+#flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
 
-_S_= math.comb(n, 2)
 _𝒜_= n+1
 Q= np.zeros((_S_, _𝒜_))
 γ= 0.9 #given in question
@@ -347,3 +374,7 @@ t1= time()
 run_Q_learning(filename, Q_model, h)
 t2= time()
 print("Total time (s): ", (t2-t1))
+
+
+# Questions
+# 1. Does wind turbine size D need changing?
