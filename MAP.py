@@ -60,7 +60,7 @@ class MAP():
 
         self.nx = nx # size of sampled grid
         self.ny = ny
-        self.worldsize = (self.nx, self.ny)
+        self.worldsize = (nx, ny)
         self.turbine_mask = np.zeros(self.worldsize)
 
         self.world = None
@@ -96,7 +96,7 @@ class MAP():
 
     def add_wake(self, wake_matrix):
         # require a nxn matrix that approximate the wake effect
-        return self.world - wake_matrix
+        self.world -= wake_matrix
    
     def get_current_wind(self):
         return self.world
@@ -157,8 +157,11 @@ def compute_wake(MAP, new_loc):
         # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
         if dist < 5 * MAP.D and loc[0] < new_loc[0]:
             mu = wind_map[loc[0], loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
-            sigma = 0.5 * mu
-            u_wake.append(np.random.normal(mu, sigma))
+            sigma = abs(0.5 * mu)
+            try:
+                u_wake.append(np.random.normal(mu, sigma))
+            except ValueError as e:
+                print(e)
     if u_wake:  #NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi       
         wake_candidate = np.max(np.abs(u_wake))
         candidate_ind = np.argmax(np.abs(u_wake))
@@ -219,9 +222,10 @@ def flattened_state_to_grid(flattened_rep):
     return grid
 
 
-def generate_random_exploration_data(MAP):
+def generate_random_exploration_data(MAP, count=0):
+    # count is used to show how many samples we generated so far
     prob_stop= 0.0
-    prob_stop_limit= 1e-5
+    prob_stop_limit= 0.01
     prob_step_size= 50
     VERY_NEG_REWARD= -1000000 # for placing turbine where there is already a turbine
 
@@ -237,9 +241,9 @@ def generate_random_exploration_data(MAP):
             csvwriter.writerow(fields)
 
     all_visited_states= set()
-    count= 0 # to show how many samples we generated so far
 
-    while(True):
+
+    while(1):
         print(count)
         count += 1
         
@@ -279,6 +283,8 @@ def generate_random_exploration_data(MAP):
         if len(current_state)==n: # and len(all_visited_states) < _S_:
             for key, val in MAP.grid_to_index.items():
                 MAP.remove_turbine(key)
+
+    return count
 
 
 # Running Q-learning
@@ -351,8 +357,10 @@ def run_Q_learning(filename, model, h):
     write_to_file(U_π, π, filename)
 
 # Main
-map= MAP(x, y, u, nx, ny)
-#generate_random_exploration_data(map)
+count = 0
+while count<5000:
+    map= MAP(x, y, u, nx, ny)
+    count = generate_random_exploration_data(map, count)
 
 filename= 'dataset'
 #df= read_in_df(filename)
