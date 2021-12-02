@@ -348,6 +348,11 @@ def update(model, s, a, r, sp):
     Q[s,a] += α*(r + γ*max(Q[sp,:]) - Q[s,a])
     return model
 
+def update_random(model, s, a, r, sp):
+    γ, Q, α = model.γ, model.Q, model.α
+    Q[s,a] += α*(r + γ*np.mean(Q[sp,:]) - Q[s,a])
+    return model
+
 
 def extract_policy(model):
     Q= model.Q
@@ -377,17 +382,30 @@ def run_Q_learning(filename, model, h):
     U_π, π= simulate(df, model, h)
     write_to_file(U_π, π, filename)
 
+
+def get_random_policy_utility(filename, model, h):
+    df = read_in_df(filename)
+    flat_rep_to_state_index, state_index_to_flat_rep = flat_rep_and_state_index(df)
+    df = add_state_index_column_to_df(df, flat_rep_to_state_index)
+    for j in range(h):
+        # for visited
+        for i in df.index:
+            model = update_random(model, df['s_index'][i], df['a'][i], df['r'][i], df['sp_index'][i])
+    Q = model.Q
+    U_π = np.mean(Q, axis=1)
+    np.savetxt(filename+"_random" + ".utility", U_π)
+
 # Main
 count = 0
-generate_random_exploration_data(x, y, u, nx, ny, limit=10000)
+# generate_random_exploration_data(x, y, u, nx, ny, limit=100000)
 
 filename= 'dataset'
-#df= read_in_df(filename)
-#flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
+# df= read_in_df(filename)
+# flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
 
 _𝒜_= n+1
 Q= np.zeros((_S_, _𝒜_))
-γ= 0.9 #given in question
+γ= 1
 α= 0.01
 Q_model= QLearning(γ, Q, α)
 
@@ -395,8 +413,15 @@ Q_model= QLearning(γ, Q, α)
 filename= "dataset"
 h= 10
 
+########
+run_random = True
+########
+
 t1= time()
-run_Q_learning(filename, Q_model, h)
+if run_random:
+    get_random_policy_utility(filename, Q_model, h)
+else:
+    run_Q_learning(filename, Q_model, h)
 t2= time()
 print("Total time (s): ", (t2-t1))
 
