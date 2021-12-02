@@ -4,6 +4,7 @@ import random
 import matplotlib.pyplot as plt
 import csv
 import math
+import copy
 from numpy.core.numeric import NaN
 import pandas as pd
 
@@ -66,8 +67,8 @@ class MAP_class():
         self.world = None
         self.x = None
         self.y = None
-        self.sample_world() # this will set self.world, self.x and self.y
-        self.WORLD_0 = self.world # the initial wind map. do not update
+        # sample_world will set self.world, self.x and self.y
+        self.WORLD_0 = self.sample_world().copy() # the initial wind map. do not update
 
         self.grid_to_index= dict()
         self.index_to_grid= dict()
@@ -93,6 +94,7 @@ class MAP_class():
         self.world = self.u[sample_x:sample_x+nx, sample_y:sample_y+ny]
         self.x = x[sample_x:sample_x+nx]
         self.y = y[sample_y:sample_y+ny]
+        return self.u[sample_x:sample_x+nx, sample_y:sample_y+ny]
 
     def add_wake(self, wake_matrix):
         # require a nxn matrix that approximate the wake effect
@@ -133,7 +135,7 @@ class MAP_class():
         return self.worldsize
 
     def reset_map(self):
-        self.world = self.WORLD_0
+        self.world = self.WORLD_0.copy()
         self.turbine_mask = np.zeros(self.worldsize)
 
 
@@ -201,9 +203,11 @@ def total_power(MAP):
 
 def add_turbine_and_compute_reward(MAP, new_loc):
     power_before = total_power(MAP)
-    MAP.add_turbine(new_loc)
     MAP.add_wake(compute_wake(MAP, new_loc))  # update the wind map by adding wake
+    MAP.add_turbine(new_loc)
     reward = total_power(MAP) - power_before
+    if reward==0 and MAP.get_turbine_location().sum()==1:
+        alert = 1
     return reward
 
 
@@ -239,7 +243,7 @@ def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
     # count is used to show how many samples we generated so far
     MAP = MAP_class(x, y, u, nx, ny)
     prob_stop= 0.0
-    prob_stop_limit= 0.00001
+    prob_stop_limit= 0.001
     prob_step_size= 50
     VERY_NEG_REWARD= -1000000 # for placing turbine where there is already a turbine
     count = 0
@@ -271,7 +275,9 @@ def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
             with open(filename+'.csv', 'a', newline='') as csvfile:
                 csvwriter = csv.writer(csvfile)
                 csvwriter.writerow([current_state, action, reward, current_state])
-            break
+            prob_stop = 0
+            MAP.reset_map()
+            continue
         
         # to slowly build up probability of stopping
         if prob_stop < prob_stop_limit:
@@ -347,6 +353,7 @@ def extract_policy(model):
     Q= model.Q
     U_π= np.max(Q, axis=1)
     π= np.argmax(Q, axis=1)
+    π[U_π <= 0] = 9  # if utility is less then action should be stop
     return U_π, π
 
 
