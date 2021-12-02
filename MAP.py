@@ -401,5 +401,4 @@ t2= time()
 print("Total time (s): ", (t2-t1))
 
 
-# Questions
-# 1. Does wind turbine size D need changing?
+
