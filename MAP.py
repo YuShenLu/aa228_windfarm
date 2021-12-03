@@ -410,10 +410,10 @@ def extract_sequence_from_policy_file(filename): # returns a sequence of actions
     # output list of actions
     df= pd.read_csv(filename, dtype=str, keep_default_na=False)
     print(df.columns)
-    print(df.get('state'))
+    #print(df.get('state'))
     print(df.get('state_index'))
-    df['state_index'] = df['state_index'].astype(int)
-    df['greedy_action'] = df['greedy_action'].astype(int)
+    df['stateindex'] = df['stateindex'].astype(int)
+    df['greedyaction'] = df['greedyaction'].astype(int)
     df['utility'] = df['utility'].astype(float)
 
     # initial
