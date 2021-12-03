@@ -230,7 +230,7 @@ def grid_to_flattened_state(MAP): # we'll need to rethink this string approach m
     return "".join(flattened_rep)
 
 
-def flattened_state_to_grid(flattened_rep):
+def flattened_state_to_grid(flattened_rep, MAP):
     flattened_rep= [int(x) for x in flattened_rep]
     grid= np.zeros((MAP.nx, MAP.ny))
     for i in flattened_rep:
