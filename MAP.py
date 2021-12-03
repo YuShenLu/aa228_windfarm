@@ -379,7 +379,7 @@ def write_to_file(U_π, π, filename):
 
 def write_policy_with_states(U_π, π, filename, state_index_to_flat_rep):
     with open(filename+".policy", 'w+') as f:
-        f.write('state, state_index, greedy_action, utility\n')
+        f.write('state,state_index,greedy_action,utility\n')
         for i in range(U_π.size):
             f.write('{},{},{},{}\n'.format(state_index_to_flat_rep[i], i, π[i], U_π[i]))
 
@@ -409,28 +409,24 @@ def get_random_policy_utility(filename, model, h):
 def extract_sequence_from_policy_file(filename): # returns a sequence of actions (tuple locations to add turbines)
     # output list of actions
     df= pd.read_csv(filename, dtype=str, keep_default_na=False)
-    print(df.columns)
-    #print(df.get('state'))
-    print(df.get('state_index'))
-    df['stateindex'] = df['stateindex'].astype(int)
-    df['greedyaction'] = df['greedyaction'].astype(int)
+    df['state_index'] = df['state_index'].astype(int)
+    df['greedy_action'] = df['greedy_action'].astype(int)
     df['utility'] = df['utility'].astype(float)
 
     # initial
     state= df.iloc[0][0]
     greedy_action= df.iloc[0][2]
-    actions= [greedy_action]
+    actions= [index_to_grid[greedy_action]]
 
     while(True):
-        state= sorted(state + greedy_action)
-        state_index= flat_rep_to_state_index(state)
-        greedy_action= df.loc[(df['state_index'] == state_index)][2]
+        state= "".join(sorted(state + str(greedy_action)))
+        state_index= flat_rep_to_state_index[state]
+        temp_df= df.loc[(df['state_index'] == state_index)]
+        greedy_action= temp_df.iloc[0, 2]
         if greedy_action == STOP_ACTION:
             break
-        actions.append(index_to_grid(greedy_action))
+        actions.append(index_to_grid[greedy_action])
     return actions
-
-
 
 
 # Main
@@ -466,4 +462,6 @@ print("Total time (s): ", (t2-t1))"""
 # Extract policy
 policy_file= 'dataset_with_state.policy'
 print("Extracting sequence of locations to add turbine at...")
-print(x for x in extract_sequence_from_policy_file(policy_file))
+action_sequence= extract_sequence_from_policy_file(policy_file)
+for a in action_sequence:
+    print(a)

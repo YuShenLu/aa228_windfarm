@@ -1,4 +1,4 @@
-state, stateindex, greedyaction, utility
+state,state_index,greedy_action,utility
 ,0,7,7936580.186767153
 0,1,1,5244670.17700675
 01,2,2,2540194.9276641007
