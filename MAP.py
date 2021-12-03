@@ -25,6 +25,7 @@ dx, dy = 200, 350
 nx, ny = 3, 3
 n= nx*ny # *Size of grid
 _S_= 2 ** n
+STOP_ACTION= n
 #nx, ny = 96, 102
 wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
 x = np.linspace(0, nx*dx, nx)
@@ -51,6 +52,17 @@ cbar = plt.colorbar()
 cbar.set_label('u (m/s)')
 plt.show()
 
+
+# to convert tuple locations to characters and vice-versa
+grid_to_index= dict()
+index_to_grid= dict()
+k= 0
+for i in range(nx):
+    for j in range(ny):
+        grid_to_index[(i, j)]= k
+        index_to_grid[k]= (i, j)
+        k += 1
+
 class MAP_class():
     def __init__(self, x, y, u, nx, ny):
 
@@ -69,15 +81,6 @@ class MAP_class():
         self.y = None
         # sample_world will set self.world, self.x and self.y
         self.WORLD_0 = self.sample_world().copy() # the initial wind map. do not update
-
-        self.grid_to_index= dict()
-        self.index_to_grid= dict()
-        k= 0
-        for i in range(self.nx):
-            for j in range(self.ny):
-                self.grid_to_index[(i, j)]= k
-                self.index_to_grid[k]= (i, j)
-                k += 1
 
 
     def sample_world(self, dialation=0, random_seed=137):
@@ -226,7 +229,7 @@ def grid_to_flattened_state(MAP): # we'll need to rethink this string approach m
     flattened_rep= []
     list_args= np.argwhere(MAP.turbine_mask==1)
     for i in range(len(list_args)):
-        flattened_rep.append(str(MAP.grid_to_index[(list_args[i][0], list_args[i][1])]))
+        flattened_rep.append(str(grid_to_index[(list_args[i][0], list_args[i][1])]))
     return "".join(flattened_rep)
 
 
@@ -234,7 +237,7 @@ def flattened_state_to_grid(flattened_rep, MAP):
     flattened_rep= [int(x) for x in flattened_rep]
     grid= np.zeros((MAP.nx, MAP.ny))
     for i in flattened_rep:
-        tmp_pos= MAP.index_to_grid[i]
+        tmp_pos= index_to_grid[i]
         grid[tmp_pos[0], tmp_pos[1]]= 1
     return grid
 
@@ -288,7 +291,7 @@ def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
         # corresponding location to update for a specific action
         current_state= grid_to_flattened_state(MAP)
         all_visited_states.add(current_state)
-        new_x, new_y= MAP.index_to_grid[action]
+        new_x, new_y= index_to_grid[action]
         if MAP.has_turbine(new_x, new_y):
             reward= VERY_NEG_REWARD
         else:
@@ -376,7 +379,7 @@ def write_to_file(U_π, π, filename):
 
 def write_policy_with_states(U_π, π, filename, state_index_to_flat_rep):
     with open(filename+".policy", 'w+') as f:
-        f.write('state, state index, greedy action, utility\n')
+        f.write('state, state_index, greedy_action, utility\n')
         for i in range(U_π.size):
             f.write('{},{},{},{}\n'.format(state_index_to_flat_rep[i], i, π[i], U_π[i]))
 
@@ -402,15 +405,43 @@ def get_random_policy_utility(filename, model, h):
     U_π = np.mean(Q, axis=1)
     np.savetxt(filename+"_random" + ".utility", U_π)
 
+
+def extract_sequence_from_policy_file(filename): # returns a sequence of actions (tuple locations to add turbines)
+    # output list of actions
+    df= pd.read_csv(filename, dtype=str, keep_default_na=False)
+    print(df.columns)
+    print(df.get('state'))
+    print(df.get('state_index'))
+    df['state_index'] = df['state_index'].astype(int)
+    df['greedy_action'] = df['greedy_action'].astype(int)
+    df['utility'] = df['utility'].astype(float)
+
+    # initial
+    state= df.iloc[0][0]
+    greedy_action= df.iloc[0][2]
+    actions= [greedy_action]
+
+    while(True):
+        state= sorted(state + greedy_action)
+        state_index= flat_rep_to_state_index(state)
+        greedy_action= df.loc[(df['state_index'] == state_index)][2]
+        if greedy_action == STOP_ACTION:
+            break
+        actions.append(index_to_grid(greedy_action))
+    return actions
+
+
+
+
 # Main
 count = 0
 # generate_random_exploration_data(x, y, u, nx, ny, limit=100000)
 
 filename= 'dataset'
-# df= read_in_df(filename)
-# flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
+df= read_in_df(filename)
+flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
 
-_𝒜_= n+1
+"""_𝒜_= n+1
 Q= np.zeros((_S_, _𝒜_))
 γ= 1
 α= 0.01
@@ -430,7 +461,9 @@ if run_random:
 else:
     run_Q_learning(filename, Q_model, h)
 t2= time()
-print("Total time (s): ", (t2-t1))
+print("Total time (s): ", (t2-t1))"""
 
-
-
+# Extract policy
+policy_file= 'dataset_with_state.policy'
+print("Extracting sequence of locations to add turbine at...")
+print(x for x in extract_sequence_from_policy_file(policy_file))
