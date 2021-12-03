@@ -26,24 +26,26 @@ nx, ny = 3, 3
 n= nx*ny # *Size of grid
 _S_= 2 ** n
 STOP_ACTION= n
-#nx, ny = 96, 102
+nx0, ny0 = 96, 102
 wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
-x = np.linspace(0, nx*dx, nx)
-y = np.linspace(0, ny*dy, ny)
+x = np.linspace(0, nx*dx, nx0)
+y = np.linspace(0, ny*dy, ny0)
 print('x len', len(x))
 print('y len', len(y))
 #u = np.reshape(u, (nx, ny), order='F')
 u = np.reshape(u, (wind_nx, wind_ny), order='F') #NOTE: and this -Manasi
 # sampling subsection of u
-tmp_x= random.choice(range(wind_nx-nx)) #NOTE: and these -Manasi
-tmp_y= random.choice(range(wind_ny-ny))
-#print("tmp_x: ", tmp_x)
-#print("tmp_y: ", tmp_y)
+tmp_x= 20   #random.choice(range(wind_nx-nx)) #NOTE: and these -Manasi
+tmp_y= 20   #random.choice(range(wind_ny-ny))
+print("tmp_x: ", tmp_x)
+print("tmp_y: ", tmp_y)
 u= u[tmp_x:tmp_x+nx, tmp_y:tmp_y+ny] #NOTE: and this -Manasi
 #print("u size: ", u.shape)
+x_sub = x[tmp_x:tmp_x+nx]
+y_sub = y[tmp_y:tmp_y+ny]
 
 # plot the wind map
-yv, xv = np.meshgrid(y, x)
+yv, xv = np.meshgrid(y_sub, x_sub)
 plt.figure()
 plt.contourf(xv, yv, u,cmap = 'Spectral_r')
 plt.xlabel('x', fontsize=16)
@@ -428,6 +430,80 @@ def extract_sequence_from_policy_file(filename): # returns a sequence of actions
         actions.append(index_to_grid[greedy_action])
     return actions
 
+def compute_wind_of_final_layout(turbine_locs, u, nx, ny, x, y):
+    '''
+    @param: turbine_locs: the action_sequence returned by extract_sequence_from_policy_file
+            u: the sampled SUB-grid to run algorithms on
+    return the wind map with wake effects of all turbines added
+    '''
+    wind_map = u
+    locs = np.array(action_sequence)
+    k_wake = 0.075  # wake decay constant for onshore wind
+    D = 125
+
+    wake_mat = np.zeros((nx, ny))
+
+    # for each grid point, iterate through all turbines
+    for i in range(nx):
+        for j in range(ny):
+            u_wake = []
+            for loc in turbine_locs:
+                if loc[0] == len(x)-1 or loc[0] < i:
+                    continue
+                dist = np.linalg.norm(np.array([x[loc[0]], y[loc[1]] ]) - np.array([x[i], y[j]]) )
+                # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
+                if dist < 5 * D:
+                    mu = wind_map[loc[0], loc[1]] * (1 - D / (D + 2 * k_wake * dist) ** 2)
+                    sigma = 0.3 * mu  # PZ: shrunk sigma to guarantee the sampled wake value is the same sign as wind_map[loc[0], loc[1]]
+                    u_wake.append(np.random.normal(mu, sigma))
+
+            if u_wake:  #NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi       
+                wake_candidate = np.max(np.abs(u_wake))
+                candidate_ind = np.argmax(np.abs(u_wake))
+                wake_mat[i, j] = wake_candidate*np.sign(u_wake[candidate_ind]) \
+                                  if wake_candidate < np.abs(wind_map[i, j]) else wind_map[i, j]
+    return wind_map - wake_mat              
+
+def plot_turbine_layout(action_sequence, u, nx, ny, x, y, fig_name, save_path='./'):
+    '''
+    @ param: action_sequence returned by extract_sequence_from_policy_file
+             tmp_x, tmp_y: the chosen (x, y) index to sample the wind map
+             nx, ny: the number of points in x and y in the sampled wind map   
+             x, y: the x and y coordinates of the SUBGRID      
+    @ plot the layout on a grid
+    '''
+    wind_map = compute_wind_of_final_layout(action_sequence, u, nx, ny, x, y)
+    locs = np.array(action_sequence)
+    print('act', action_sequence)
+    print('locs', locs)
+    xi_turb = locs[:, 0]
+    yi_turb = locs[:, 1]
+    print('xi', xi_turb)
+    print('yi', yi_turb)
+    yv, xv = np.meshgrid(y, x)
+
+    ax = plt.subplot()
+    plt.contourf(xv, yv, wind_map, cmap = 'Spectral_r', alpha=0.5)
+
+    print('x turb=', x[xi_turb], 'y_turb=', y[yi_turb])
+    plt.plot(x[xi_turb], y[yi_turb], 'bo', markersize = 10)
+    plt.grid(True)
+    plt.xlabel('x', fontsize=16)
+    plt.ylabel('y', fontsize=16)
+    plt.xticks(x)
+    plt.yticks(y)
+    #plt.xticks(np.concatenate(( [min(x)+1], x, [max(x)+1])))
+    #plt.yticks(np.concatenate(( [min(y)+1], y, [max(y)+1])))
+    plt.xlim(np.min(x)-1, np.max(x)+1)
+    plt.ylim(np.min(y)-1, np.max(y)+1)
+    cbar = plt.colorbar()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    cbar.set_label('u (m/s)')
+    plt.savefig(save_path + fig_name)
+    plt.show()
 
 # Main
 count = 0
@@ -465,3 +541,9 @@ print("Extracting sequence of locations to add turbine at...")
 action_sequence= extract_sequence_from_policy_file(policy_file)
 for a in action_sequence:
     print(a)
+
+fig_name = 'final_layout0.png'
+plot_turbine_layout(action_sequence, u,nx, ny, x_sub, y_sub, fig_name)
+
+
+
