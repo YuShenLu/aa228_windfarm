@@ -374,6 +374,12 @@ def write_to_file(U_π, π, filename):
     np.savetxt(filename+".utility", U_π)
     np.savetxt(filename+".policy", π, fmt='%i')
 
+def write_policy_with_states(U_π, π, filename, state_index_to_flat_rep):
+    with open(filename+".policy", 'w+') as f:
+        f.write('state, state index, greedy action, utility\n')
+        for i in range(U_π.size):
+            f.write('{},{},{},{}\n'.format(state_index_to_flat_rep[i], i, π[i], U_π[i]))
+
 
 def run_Q_learning(filename, model, h):
     df= read_in_df(filename)
@@ -381,6 +387,7 @@ def run_Q_learning(filename, model, h):
     df= add_state_index_column_to_df(df, flat_rep_to_state_index)
     U_π, π= simulate(df, model, h)
     write_to_file(U_π, π, filename)
+    write_policy_with_states(U_π, π, filename+"_with_state", state_index_to_flat_rep)
 
 
 def get_random_policy_utility(filename, model, h):
@@ -414,7 +421,7 @@ filename= "dataset"
 h= 10
 
 ########
-run_random = True
+run_random = False
 ########
 
 t1= time()
