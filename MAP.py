@@ -163,6 +163,9 @@ def compute_wake(MAP, new_loc):
     wake_mat = np.zeros((MAP.nx, MAP.ny))
     u_wake = []
     wind_map = MAP.get_current_wind()
+    dx = MAP.x[1] - MAP.x[0]
+    max_xind = int(np.floor(5*MAP.D/dx))  # the max index distance in x after a turbine where wake can have an effect
+
     for loc in old_locs:
         dist = np.linalg.norm(
             np.array([MAP.x[new_loc[0]], MAP.y[new_loc[1]]]) - np.array([MAP.x[loc[0]], MAP.y[loc[1]]]))
@@ -448,7 +451,7 @@ def compute_wind_of_final_layout(turbine_locs, u, nx, ny, x, y):
         for j in range(ny):
             u_wake = []
             for loc in turbine_locs:
-                if loc[0] == len(x)-1 or loc[0] < i:
+                if loc[0] == len(x)-1 or loc[0] >= i:
                     continue
                 dist = np.linalg.norm(np.array([x[loc[0]], y[loc[1]] ]) - np.array([x[i], y[j]]) )
                 # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
@@ -474,20 +477,18 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, fig_name, save_path='.
     '''
     wind_map = compute_wind_of_final_layout(action_sequence, u, nx, ny, x, y)
     locs = np.array(action_sequence)
-    print('act', action_sequence)
-    print('locs', locs)
     xi_turb = locs[:, 0]
     yi_turb = locs[:, 1]
-    print('xi', xi_turb)
-    print('yi', yi_turb)
     yv, xv = np.meshgrid(y, x)
+    labels = np.arange(len(xi_turb)) + 1
 
     ax = plt.subplot()
-    plt.contourf(xv, yv, wind_map, cmap = 'Spectral_r', alpha=0.5)
+    plt.contourf(xv, yv, wind_map, cmap = 'Spectral_r', alpha=0.6)
 
-    print('x turb=', x[xi_turb], 'y_turb=', y[yi_turb])
-    plt.plot(x[xi_turb], y[yi_turb], 'bo', markersize = 10)
+    plt.plot(x[xi_turb], y[yi_turb], 'bo', markersize = 20)
     plt.grid(True)
+
+    
     plt.xlabel('x', fontsize=16)
     plt.ylabel('y', fontsize=16)
     plt.xticks(x)
@@ -496,11 +497,16 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, fig_name, save_path='.
     #plt.yticks(np.concatenate(( [min(y)+1], y, [max(y)+1])))
     plt.xlim(np.min(x)-1, np.max(x)+1)
     plt.ylim(np.min(y)-1, np.max(y)+1)
+
     cbar = plt.colorbar()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
+    # label the turbines by the sequence they are added
+    for i, label in enumerate(labels):
+        ax.annotate(str(label), (x[xi_turb[i]], y[yi_turb[i]]), xytext = (x[xi_turb[i]]-.3, y[yi_turb[i]]-.4),\
+                     color='w', fontsize=15)
     cbar.set_label('u (m/s)')
     plt.savefig(save_path + fig_name)
     plt.show()
