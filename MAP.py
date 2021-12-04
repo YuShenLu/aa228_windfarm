@@ -530,6 +530,7 @@ if __name__ == "__main__":
         γ= 1
         α= 0.01
         Q_model= QLearning(γ, Q, α)
+        num_D = 5
 
         #run Q-learning
 
