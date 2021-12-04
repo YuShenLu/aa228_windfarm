@@ -25,39 +25,55 @@ dx, dy = 200, 350
 nx, ny = 3, 3
 n= nx*ny # *Size of grid
 _S_= 2 ** n
-#nx, ny = 96, 102
+STOP_ACTION= n
+nx0, ny0 = 96, 102
 wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
-x = np.linspace(0, nx*dx, nx)
-y = np.linspace(0, ny*dy, ny)
+x = np.linspace(0, nx*dx, nx0)
+y = np.linspace(0, ny*dy, ny0)
 print('x len', len(x))
 print('y len', len(y))
 #u = np.reshape(u, (nx, ny), order='F')
 u = np.reshape(u, (wind_nx, wind_ny), order='F') #NOTE: and this -Manasi
+u0 = u  #store the original wind map
 # sampling subsection of u
-tmp_x= random.choice(range(wind_nx-nx)) #NOTE: and these -Manasi
-tmp_y= random.choice(range(wind_ny-ny))
-#print("tmp_x: ", tmp_x)
-#print("tmp_y: ", tmp_y)
+tmp_x= 20   #random.choice(range(wind_nx-nx)) #NOTE: and these -Manasi
+tmp_y= 20   #random.choice(range(wind_ny-ny))
+print("tmp_x: ", tmp_x)
+print("tmp_y: ", tmp_y)
 u= u[tmp_x:tmp_x+nx, tmp_y:tmp_y+ny] #NOTE: and this -Manasi
 #print("u size: ", u.shape)
+x_sub = x[tmp_x:tmp_x+nx]
+y_sub = y[tmp_y:tmp_y+ny]
 
 # plot the wind map
-yv, xv = np.meshgrid(y, x)
+yv, xv = np.meshgrid(y_sub, x_sub)
 plt.figure()
 plt.contourf(xv, yv, u,cmap = 'Spectral_r')
 plt.xlabel('x', fontsize=16)
 plt.ylabel('y', fontsize=16)
 cbar = plt.colorbar()
 cbar.set_label('u (m/s)')
-plt.show()
+#plt.show()
+
+
+# to convert tuple locations to characters and vice-versa
+grid_to_index= dict()
+index_to_grid= dict()
+k= 0
+for i in range(nx):
+    for j in range(ny):
+        grid_to_index[(i, j)]= k
+        index_to_grid[k]= (i, j)
+        k += 1
 
 class MAP_class():
-    def __init__(self, x, y, u, nx, ny):
+    def __init__(self, x, y, u, nx, ny, num_D):
 
         self.raw_x = x
         self.raw_y = y
         self.u = u # raw wind data, DO NOT ACCESS, use get_current_wind() instead!
         self.D = 125 # wind turbine size
+        self.num_D = num_D #the farthest distance in number of turbine diameters that is a turbine wake can reach
 
         self.nx = nx # size of sampled grid
         self.ny = ny
@@ -69,15 +85,6 @@ class MAP_class():
         self.y = None
         # sample_world will set self.world, self.x and self.y
         self.WORLD_0 = self.sample_world().copy() # the initial wind map. do not update
-
-        self.grid_to_index= dict()
-        self.index_to_grid= dict()
-        k= 0
-        for i in range(self.nx):
-            for j in range(self.ny):
-                self.grid_to_index[(i, j)]= k
-                self.index_to_grid[k]= (i, j)
-                k += 1
 
 
     def sample_world(self, dialation=0, random_seed=137):
@@ -148,7 +155,7 @@ def compute_wake(MAP, new_loc):
     @ return:
       wake_mat: the wake (velocity deficit) matrix with a negative value at the new turbine location, and zeros elsewhere
     '''
-      # rotor diameter
+
     k_wake = 0.075  # wake decay constant for onshore wind
     if (not np.any(MAP.turbine_mask)):  # there is no turbine yet
         return np.zeros((MAP.nx, MAP.ny))
@@ -158,20 +165,21 @@ def compute_wake(MAP, new_loc):
     wake_mat = np.zeros((MAP.nx, MAP.ny))
     u_wake = []
     wind_map = MAP.get_current_wind()
+
     for loc in old_locs:
         dist = np.linalg.norm(
             np.array([MAP.x[new_loc[0]], MAP.y[new_loc[1]]]) - np.array([MAP.x[loc[0]], MAP.y[loc[1]]]))
         # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
-        if dist < 5 * MAP.D and loc[0] < new_loc[0]:
+        if dist < MAP.num_D * MAP.D and loc[0] < new_loc[0]:
             mu = wind_map[loc[0], loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
-            sigma = 0.3 * mu  # PZ: shrunk sigma to guarantee the sampled wake value is the same sign as wind_map[loc[0], loc[1]]
+            sigma = .1 * mu  # PZ: shrunk sigma to guarantee the sampled wake value is the same sign as wind_map[loc[0], loc[1]]
             try:
                 u_wake.append(np.random.normal(mu, sigma))
             except ValueError as e:
                 print(e)
-        if dist < 5 * MAP.D and loc[0] > new_loc[0]: # modify the wind speed in the wake region of the NEW turbine
+        if dist < MAP.num_D * MAP.D and loc[0] > new_loc[0]: # modify the wind speed in the wake region of the NEW turbine
             mu = wind_map[new_loc[0], new_loc[1]] * (1 - MAP.D / (MAP.D + 2 * k_wake * dist) ** 2)
-            sigma = 0.3 * mu
+            sigma = .1 * mu
             u_wake_on_old = np.random.normal(mu, sigma)
             wake_mat[loc[0], loc[1]] = u_wake_on_old if np.abs(u_wake_on_old) < np.abs(wind_map[loc[0], loc[1]]) \
                                        else wind_map[loc[0], loc[1]]
@@ -182,7 +190,6 @@ def compute_wake(MAP, new_loc):
         candidate_ind = np.argmax(np.abs(u_wake))
         wake_mat[new_loc[0], new_loc[1]] = wake_candidate*np.sign(u_wake[candidate_ind]) \
                                            if wake_candidate < np.abs(wind_map[new_loc[0], new_loc[1]]) else wind_map[new_loc[0], new_loc[1]]
-        
     return wake_mat
 
 
@@ -226,22 +233,22 @@ def grid_to_flattened_state(MAP): # we'll need to rethink this string approach m
     flattened_rep= []
     list_args= np.argwhere(MAP.turbine_mask==1)
     for i in range(len(list_args)):
-        flattened_rep.append(str(MAP.grid_to_index[(list_args[i][0], list_args[i][1])]))
+        flattened_rep.append(str(grid_to_index[(list_args[i][0], list_args[i][1])]))
     return "".join(flattened_rep)
 
 
-def flattened_state_to_grid(flattened_rep):
+def flattened_state_to_grid(flattened_rep, MAP):
     flattened_rep= [int(x) for x in flattened_rep]
     grid= np.zeros((MAP.nx, MAP.ny))
     for i in flattened_rep:
-        tmp_pos= MAP.index_to_grid[i]
+        tmp_pos= index_to_grid[i]
         grid[tmp_pos[0], tmp_pos[1]]= 1
     return grid
 
 
-def generate_random_exploration_data(filename, x, y, u, nx, ny, limit=None):
+def generate_random_exploration_data(x, y, u, nx, ny, num_D, filename= 'dataset', limit=None):
     # count is used to show how many samples we generated so far
-    MAP = MAP_class(x, y, u, nx, ny)
+    MAP = MAP_class(x, y, u, nx, ny, num_D)
     prob_stop= 0.0
     prob_stop_limit= 0.001
     prob_step_size= 50
@@ -288,7 +295,7 @@ def generate_random_exploration_data(filename, x, y, u, nx, ny, limit=None):
         # corresponding location to update for a specific action
         current_state= grid_to_flattened_state(MAP)
         all_visited_states.add(current_state)
-        new_x, new_y= MAP.index_to_grid[action]
+        new_x, new_y= index_to_grid[action]
         if MAP.has_turbine(new_x, new_y):
             reward= VERY_NEG_REWARD
         else:
@@ -303,7 +310,6 @@ def generate_random_exploration_data(filename, x, y, u, nx, ny, limit=None):
         # if grid has been fully filled, we can remove all turbines (clear it) to explore states anew
         if len(current_state)==n: # and len(all_visited_states) < _S_:
             MAP.reset_map()
-
 
     return count
 
@@ -377,7 +383,7 @@ def write_to_file(U_π, π, filename):
 
 def write_policy_with_states(U_π, π, filename, state_index_to_flat_rep):
     with open(filename+".policy", 'w+') as f:
-        f.write('state, state index, greedy action, utility\n')
+        f.write('state,state_index,greedy_action,utility\n')
         for i in range(U_π.size):
             f.write('{},{},{},{}\n'.format(state_index_to_flat_rep[i], i, π[i], U_π[i]))
 
@@ -402,6 +408,111 @@ def get_random_policy_utility(filename, model, h):
     Q = model.Q
     U_π = np.mean(Q, axis=1)
     np.savetxt(filename+"_random" + ".utility", U_π)
+
+
+def extract_sequence_from_policy_file(filename):  # returns a sequence of actions (tuple locations to add turbines)
+    # output list of actions
+    df = pd.read_csv(filename, dtype=str, keep_default_na=False)
+    df['state_index'] = df['state_index'].astype(int)
+    df['greedy_action'] = df['greedy_action'].astype(int)
+    df['utility'] = df['utility'].astype(float)
+
+    # initial
+    state = df.iloc[0][0]
+    greedy_action = df.iloc[0][2]
+    actions = [index_to_grid[greedy_action]]
+
+    while (True):
+        state = "".join(sorted(state + str(greedy_action)))
+        state_index = flat_rep_to_state_index[state]
+        temp_df = df.loc[(df['state_index'] == state_index)]
+        greedy_action = temp_df.iloc[0, 2]
+        if greedy_action == STOP_ACTION:
+            break
+        actions.append(index_to_grid[greedy_action])
+    return actions
+
+
+def compute_wind_of_final_layout(turbine_locs, u, nx, ny, x, y, num_D):
+    '''
+    @param: turbine_locs: the action_sequence returned by extract_sequence_from_policy_file
+            u: the sampled SUB-grid to run algorithms on
+            nx, ny, x, y: the number of points and coordinates of the SUBGRID
+            num_D: the farthest distance in number of turbine diameters that is a turbine wake can reach
+    @return: the wind map with wake effects of all turbines added
+    '''
+    wind_map = u
+    locs = np.array(action_sequence)
+    k_wake = 0.075  # wake decay constant for onshore wind
+    D = 125
+
+    wake_mat = np.zeros((nx, ny))
+
+    # for each grid point, iterate through all turbines
+    for i in range(nx):
+        for j in range(ny):
+            u_wake = []
+            for loc in turbine_locs:
+                if loc[0] == len(x) - 1 or loc[0] >= i:
+                    continue
+                dist = np.linalg.norm(np.array([x[loc[0]], y[loc[1]]]) - np.array([x[i], y[j]]))
+                # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
+                if dist < num_D * D:
+                    mu = wind_map[loc[0], loc[1]] * (1 - D / (D + 2 * k_wake * dist) ** 2)
+                    sigma = .1 * mu  # PZ: shrunk sigma to guarantee the sampled wake value is the same sign as wind_map[loc[0], loc[1]]
+                    u_wake.append(np.random.normal(mu, sigma))
+
+            if u_wake:  # NOTE: I changed this to make sure it compiles, let me know if it's incorrect -Manasi
+                wake_candidate = np.max(np.abs(u_wake))
+                candidate_ind = np.argmax(np.abs(u_wake))
+                wake_mat[i, j] = wake_candidate * np.sign(u_wake[candidate_ind]) \
+                    if wake_candidate < np.abs(wind_map[i, j]) else wind_map[i, j]
+    return wind_map - wake_mat
+
+
+def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, fig_name, save_path='./'):
+    '''
+    @ param: action_sequence returned by extract_sequence_from_policy_file
+             tmp_x, tmp_y: the chosen (x, y) index to sample the wind map
+             nx, ny: the number of points in x and y in the sampled wind map
+             x, y: the x and y coordinates of the SUBGRID
+             num_D: the farthest distance in number of turbine diameters that is a turbine wake can reach
+    @ plot the layout on a grid
+    '''
+    wind_map = compute_wind_of_final_layout(action_sequence, u, nx, ny, x, y, num_D)
+    locs = np.array(action_sequence)
+    xi_turb = locs[:, 0]
+    yi_turb = locs[:, 1]
+    yv, xv = np.meshgrid(y, x)
+    labels = np.arange(len(xi_turb)) + 1
+
+    ax = plt.subplot()
+    plt.contourf(xv, yv, wind_map, cmap='Spectral_r', alpha=0.7)
+
+    plt.plot(x[xi_turb], y[yi_turb], 'bo', markersize=20)
+    plt.grid(True)
+
+    plt.xlabel('x', fontsize=16)
+    plt.ylabel('y', fontsize=16)
+    plt.xticks(x)
+    plt.yticks(y)
+    # plt.xticks(np.concatenate(( [min(x)+1], x, [max(x)+1])))
+    # plt.yticks(np.concatenate(( [min(y)+1], y, [max(y)+1])))
+    plt.xlim(np.min(x) - 1, np.max(x) + 1)
+    plt.ylim(np.min(y) - 1, np.max(y) + 1)
+
+    cbar = plt.colorbar()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    # label the turbines by the sequence they are added
+    for i, label in enumerate(labels):
+        ax.annotate(str(label), (x[xi_turb[i]], y[yi_turb[i]]), xytext=(x[xi_turb[i]] - .3, y[yi_turb[i]] - .4), \
+                    color='w', fontsize=15)
+    cbar.set_label('u (m/s)')
+    plt.savefig(save_path + fig_name)
+    plt.show()
 
 if __name__ == "__main__":
     reward_cost_list = [1000, 500]#[10000, 5000]#[2500000, 3000000, 300000, 500000, 1000000, 1500000, 2000000]
@@ -435,6 +546,16 @@ if __name__ == "__main__":
         #     run_Q_learning(filename, Q_model, h)
         t2= time()
         print("Total time (s): ", (t2-t1))
+
+        # Extract policy
+        policy_file= filename + '_with_state.policy'
+        print("Extracting sequence of locations to add turbine at...")
+        action_sequence= extract_sequence_from_policy_file(policy_file)
+        for a in action_sequence:
+            print(a)
+
+        fig_name = filename + 'final_layout.png'
+        plot_turbine_layout(action_sequence, u,nx, ny, x_sub, y_sub, num_D, fig_name)
 
 
 
