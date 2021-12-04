@@ -208,7 +208,7 @@ def add_turbine_and_compute_reward(MAP, new_loc):
     reward = total_power(MAP) - power_before
     if reward==0 and MAP.get_turbine_location().sum()==1:
         alert = 1
-    return reward
+    return reward - reward_cost
 
 
 def power_generated(u):
@@ -239,7 +239,7 @@ def flattened_state_to_grid(flattened_rep):
     return grid
 
 
-def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
+def generate_random_exploration_data(filename, x, y, u, nx, ny, limit=None):
     # count is used to show how many samples we generated so far
     MAP = MAP_class(x, y, u, nx, ny)
     prob_stop= 0.0
@@ -254,7 +254,7 @@ def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
     action_probs += [prob_stop]
     random.seed(random_seed)
     fields= ['s', 'a', 'r', 'sp']
-    filename= 'dataset'
+
     with open(filename+'.csv', 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(fields)
@@ -303,6 +303,7 @@ def generate_random_exploration_data(x, y, u, nx, ny, limit=None):
         # if grid has been fully filled, we can remove all turbines (clear it) to explore states anew
         if len(current_state)==n: # and len(all_visited_states) < _S_:
             MAP.reset_map()
+
 
     return count
 
@@ -402,35 +403,38 @@ def get_random_policy_utility(filename, model, h):
     U_π = np.mean(Q, axis=1)
     np.savetxt(filename+"_random" + ".utility", U_π)
 
-# Main
-count = 0
-# generate_random_exploration_data(x, y, u, nx, ny, limit=100000)
+if __name__ == "__main__":
+    reward_cost_list = [1000, 500]#[10000, 5000]#[2500000, 3000000, 300000, 500000, 1000000, 1500000, 2000000]
+    for reward_cost in reward_cost_list:
+        # Main
+        count = 0
+        filename= "dataset_reward_cost_{}".format(reward_cost)
+        # generate_random_exploration_data(filename, x, y, u, nx, ny, limit=100000)
 
-filename= 'dataset'
-# df= read_in_df(filename)
-# flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
+        # df= read_in_df(filename)
+        # flat_rep_to_state_index, state_index_to_flat_rep= flat_rep_and_state_index(df)
 
-_𝒜_= n+1
-Q= np.zeros((_S_, _𝒜_))
-γ= 1
-α= 0.01
-Q_model= QLearning(γ, Q, α)
+        _𝒜_= n+1
+        Q= np.zeros((_S_, _𝒜_))
+        γ= 1
+        α= 0.01
+        Q_model= QLearning(γ, Q, α)
 
-#run Q-learning
-filename= "dataset"
-h= 10
+        #run Q-learning
 
-########
-run_random = False
-########
+        h= 10
 
-t1= time()
-if run_random:
-    get_random_policy_utility(filename, Q_model, h)
-else:
-    run_Q_learning(filename, Q_model, h)
-t2= time()
-print("Total time (s): ", (t2-t1))
+        ########
+        run_random = False
+        ########
+
+        t1= time()
+        # if run_random:
+        #     get_random_policy_utility(filename, Q_model, h)
+        # else:
+        #     run_Q_learning(filename, Q_model, h)
+        t2= time()
+        print("Total time (s): ", (t2-t1))
 
 
 
