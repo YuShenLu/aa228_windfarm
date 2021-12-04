@@ -28,8 +28,8 @@ _S_= 2 ** n
 STOP_ACTION= n
 nx0, ny0 = 96, 102
 wind_nx, wind_ny= 96, 102 #NOTE: I added this part for now to sample a subsection of the windmap to match the turbine_mask size -Manasi
-x = np.linspace(0, nx*dx, nx0)
-y = np.linspace(0, ny*dy, ny0)
+x = np.linspace(0, nx0*dx, nx0)
+y = np.linspace(0, ny0*dy, ny0)
 print('x len', len(x))
 print('y len', len(y))
 #u = np.reshape(u, (nx, ny), order='F')
@@ -44,6 +44,8 @@ u= u[tmp_x:tmp_x+nx, tmp_y:tmp_y+ny] #NOTE: and this -Manasi
 #print("u size: ", u.shape)
 x_sub = x[tmp_x:tmp_x+nx]
 y_sub = y[tmp_y:tmp_y+ny]
+print('x=', x, 'y=', y)
+print('x sub=', x_sub, 'y sub=', y_sub)
 
 # plot the wind map
 yv, xv = np.meshgrid(y_sub, x_sub)
@@ -460,6 +462,7 @@ def compute_wind_of_final_layout(turbine_locs, u, nx, ny, x, y, num_D, std_facto
                     continue
                 dist = np.linalg.norm(np.array([x[loc[0]], y[loc[1]] ]) - np.array([x[i], y[j]]) )
                 # the turbine of influence should be within 5D a distance of the new turbine, and should be placed to the left of it
+                print('i=',i,'j=',j,'loc=',loc,'dist=',dist)
                 if dist < num_D * D:
                     mu = wind_map[loc[0], loc[1]] * (1 - D / (D + 2 * k_wake * dist) ** 2)
                     sigma = std_factor * mu  # PZ: shrunk sigma to guarantee the sampled wake value is the same sign as wind_map[loc[0], loc[1]]
@@ -511,14 +514,14 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig
     plt.grid(True)
 
     
-    plt.xlabel('x', fontsize=16)
-    plt.ylabel('y', fontsize=16)
+    plt.xlabel('x (m)', fontsize=16)
+    plt.ylabel('y (m)', fontsize=16)
     plt.xticks(x)
     plt.yticks(y)
     #plt.xticks(np.concatenate(( [min(x)+1], x, [max(x)+1])))
     #plt.yticks(np.concatenate(( [min(y)+1], y, [max(y)+1])))
-    plt.xlim(np.min(x)-1, np.max(x)+1)
-    plt.ylim(np.min(y)-1, np.max(y)+1)
+    plt.xlim(np.min(x)-30, np.max(x)+30)
+    plt.ylim(np.min(y)-30, np.max(y)+30)
 
     cbar = plt.colorbar()
     ax.spines['top'].set_visible(False)
@@ -527,7 +530,7 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig
     ax.spines['bottom'].set_visible(False)
     # label the turbines by the sequence they are added
     for i, label in enumerate(labels):
-        ax.annotate(str(label), (x[xi_turb[i]], y[yi_turb[i]]), xytext = (x[xi_turb[i]]-.3, y[yi_turb[i]]-.4),\
+        ax.annotate(str(label), (x[xi_turb[i]], y[yi_turb[i]]), xytext = (x[xi_turb[i]]-8, y[yi_turb[i]]-10),\
                      color='w', fontsize=15)
     cbar.set_label('u (m/s)')
     plt.savefig(fig_name)
@@ -536,14 +539,14 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig
 # Main
 count = 0
 ## parameters to modify ###
-dir = './wake_std_1.0mu/'
+dir = './wake1D/'
 print('------dir=-------', dir)
 filename= dir + 'dataset'
 generate_data = 0
 run_learning = 0
 run_random = False
-num_D = 5
-std_factor = 1.0
+num_D = 1
+std_factor = 0.3
 ###########################
 
 if generate_data:
