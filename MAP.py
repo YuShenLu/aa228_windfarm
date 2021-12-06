@@ -475,14 +475,14 @@ def compute_wind_of_final_layout(turbine_locs, u, nx, ny, x, y, num_D, std_facto
                                   if wake_candidate < np.abs(wind_map[i, j]) else wind_map[i, j]
     return wind_map - wake_mat  
 
-def compute_total_power(wind_map):
+def compute_total_power(wind_map, xi_turb, yi_turb):
     '''
-    @ param: the final wind map
+    @ param: the final wind map and turbine indices in the grid
     @ return: the total power   
     '''            
     D = 125
     rho = 1.225  # kg/m^3, air density
-    return 1/2*np.pi/4*D**2*rho*np.sum(wind_map**3)
+    return 1/2*np.pi/4*D**2*rho*np.sum(wind_map[xi_turb, yi_turb]**3)
 
 def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig_name):
     '''
@@ -495,15 +495,17 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig
     @ plot the layout on a grid
     '''
     wind_map = compute_wind_of_final_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor)
-    # get and plot the total power
-    # fpn = open(filename + '.utility', 'r')
-    # lines = fpn.readlines()
-    total_power = compute_total_power(wind_map)
-    print('*** total power=', total_power)
-    print('wind map', wind_map)
     locs = np.array(action_sequence)
     xi_turb = locs[:, 0]
     yi_turb = locs[:, 1]
+
+    # get and plot the total power
+    # fpn = open(filename + '.utility', 'r')
+    # lines = fpn.readlines()
+    total_power = compute_total_power(wind_map, xi_turb, yi_turb)
+    print('*** total power=', total_power)
+    print('wind map', wind_map)
+
     yv, xv = np.meshgrid(y, x)
     labels = np.arange(len(xi_turb)) + 1
 
@@ -520,8 +522,8 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig
     plt.yticks(y)
     #plt.xticks(np.concatenate(( [min(x)+1], x, [max(x)+1])))
     #plt.yticks(np.concatenate(( [min(y)+1], y, [max(y)+1])))
-    plt.xlim(np.min(x)-30, np.max(x)+30)
-    plt.ylim(np.min(y)-30, np.max(y)+30)
+    plt.xlim(np.min(x)-.0075*np.min(x), np.max(x)+.0075*np.min(x))
+    plt.ylim(np.min(y)-.0075*np.min(x), np.max(y)+.0075*np.min(x))
 
     cbar = plt.colorbar()
     ax.spines['top'].set_visible(False)
@@ -539,13 +541,13 @@ def plot_turbine_layout(action_sequence, u, nx, ny, x, y, num_D, std_factor, fig
 # Main
 count = 0
 ## parameters to modify ###
-dir = './wake1D/'
+dir = './' #'./wake_std_0.2mu/'
 print('------dir=-------', dir)
 filename= dir + 'dataset'
 generate_data = 0
 run_learning = 0
 run_random = False
-num_D = 1
+num_D = 5
 std_factor = 0.3
 ###########################
 
